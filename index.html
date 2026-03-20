@@ -27,15 +27,21 @@
             border-radius: 8px; color: #ffffff; font-size: 14px; outline: none;
         }
         input[type="text"]:focus { border-color: #7C3AED; }
-        .file-input-wrapper {
+        .file-wrapper {
+            position: relative;
             background: #0D0D14; border: 1px dashed #2A2A45;
-            border-radius: 8px; padding: 20px; text-align: center; cursor: pointer;
+            border-radius: 8px; padding: 20px; text-align: center;
+            cursor: pointer; overflow: hidden;
         }
-        .file-input-wrapper:hover { border-color: #7C3AED; }
-        .file-input-wrapper input[type="file"] { display: none; }
+        .file-wrapper:hover { border-color: #7C3AED; }
+        .file-wrapper input[type="file"] {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            opacity: 0; cursor: pointer; z-index: 10;
+        }
         .file-icon { font-size: 28px; margin-bottom: 8px; }
         .file-text { font-size: 13px; color: #A0A0C0; }
-        .file-name { font-size: 13px; color: #7C3AED; margin-top: 4px; font-weight: 500; }
+        .file-name { font-size: 13px; color: #7C3AED; margin-top: 4px; font-weight: 500; min-height: 18px; }
         .btn-swap {
             width: 100%; padding: 14px; background: #7C3AED;
             color: #ffffff; border: none; border-radius: 8px;
@@ -44,20 +50,20 @@
         .btn-swap:hover { background: #6D28D9; }
         .btn-swap:disabled { background: #3D2070; cursor: not-allowed; opacity: 0.6; }
         .status { margin-top: 16px; font-size: 14px; text-align: center; min-height: 20px; }
-        .status.success { color: #10B981; }
-        .status.error { color: #EF4444; }
-        .status.info { color: #A0A0C0; }
+        .success { color: #10B981; }
+        .error { color: #EF4444; }
+        .info { color: #A0A0C0; }
         .progress-bar { display: none; margin-top: 12px; height: 4px; background: #2A2A45; border-radius: 2px; overflow: hidden; }
         .progress-fill { height: 100%; width: 0%; background: #7C3AED; transition: width 0.3s; }
         .result-section { display: none; margin-top: 24px; }
-        .result-section h3 { font-size: 16px; color: #10B981; margin-bottom: 12px; }
+        .result-title { font-size: 16px; color: #10B981; margin-bottom: 12px; }
         video { width: 100%; border-radius: 8px; background: #000; }
         .btn-download {
             display: block; width: 100%; padding: 12px; background: #10B981;
             color: #ffffff; border: none; border-radius: 8px; font-size: 14px;
-            font-weight: 600; cursor: pointer; text-align: center;
-            margin-top: 12px; text-decoration: none;
+            font-weight: 600; text-align: center; margin-top: 12px; text-decoration: none;
         }
+        .btn-download:hover { background: #059669; }
         .divider { border: none; border-top: 1px solid #2A2A45; margin: 24px 0; }
     </style>
 </head>
@@ -75,7 +81,7 @@
 
         <div class="form-group">
             <label>1. Photo source (ton visage)</label>
-            <div class="file-input-wrapper" onclick="document.getElementById('sourceFile').click()">
+            <div class="file-wrapper">
                 <input type="file" id="sourceFile" accept="image/*" onchange="updateLabel('sourceFile', 'sourceName')">
                 <div class="file-icon">📷</div>
                 <div class="file-text">Clique pour choisir une photo</div>
@@ -85,7 +91,7 @@
 
         <div class="form-group">
             <label>2. Vidéo cible</label>
-            <div class="file-input-wrapper" onclick="document.getElementById('videoFile').click()">
+            <div class="file-wrapper">
                 <input type="file" id="videoFile" accept="video/*" onchange="updateLabel('videoFile', 'videoName')">
                 <div class="file-icon">🎬</div>
                 <div class="file-text">Clique pour choisir une vidéo</div>
@@ -102,7 +108,7 @@
         <div class="status info" id="status"></div>
 
         <div class="result-section" id="resultSection">
-            <h3>✅ Résultat</h3>
+            <p class="result-title">✅ Résultat</p>
             <video id="resultVideo" controls></video>
             <a class="btn-download" id="downloadLink">💾 Télécharger la vidéo</a>
         </div>
@@ -116,15 +122,6 @@
             if (file) document.getElementById(labelId).textContent = file.name;
         }
 
-        function readFileAsArrayBuffer(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = e => resolve(e.target.result);
-                reader.onerror = reject;
-                reader.readAsArrayBuffer(file);
-            });
-        }
-
         async function doSwap() {
             if (swapping) return;
             const apiUrl = document.getElementById('apiUrl').value.trim();
@@ -134,7 +131,7 @@
             const progressBar = document.getElementById('progressBar');
             const progressFill = document.getElementById('progressFill');
 
-            if (!apiUrl) { status.className = 'status error'; status.textContent = 'Entre l\'URL de l\'API !'; return; }
+            if (!apiUrl) { status.className = 'status error'; status.textContent = "Entre l'URL de l'API !"; return; }
             if (!sourceFile || !videoFile) { status.className = 'status error'; status.textContent = 'Sélectionne une photo et une vidéo !'; return; }
 
             swapping = true;
@@ -149,36 +146,56 @@
             }, 500);
 
             status.className = 'status info';
-            status.textContent = '📤 Lecture des fichiers...';
+            status.textContent = '⚡ Face Swap GPU en cours...';
 
-            try {
-                const formData = new FormData();
-                formData.append('source', sourceFile, sourceFile.name);
-                formData.append('video', videoFile, videoFile.name);
+            const formData = new FormData();
+            formData.append('source', sourceFile, sourceFile.name);
+            formData.append('video', videoFile, videoFile.name);
 
-                status.textContent = '⚡ Face Swap GPU en cours...';
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', apiUrl + '/swap-video');
+            xhr.setRequestHeader('bypass-tunnel-reminder', 'true');
+            xhr.responseType = 'blob';
+            xhr.timeout = 600000;
 
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', apiUrl + '/swap-video');
-                xhr.setRequestHeader('bypass-tunnel-reminder', 'true');
-                xhr.responseType = 'blob';
-                xhr.timeout = 600000;
+            xhr.onload = function() {
+                clearInterval(interval);
+                progressFill.style.width = '100%';
+                if (xhr.status === 200) {
+                    const url = URL.createObjectURL(xhr.response);
+                    document.getElementById('resultVideo').src = url;
+                    document.getElementById('downloadLink').href = url;
+                    document.getElementById('downloadLink').download = 'faceswap_result.mp4';
+                    document.getElementById('resultSection').style.display = 'block';
+                    document.getElementById('resultVideo').play();
+                    status.className = 'status success';
+                    status.textContent = '✅ Face Swap réussi !';
+                } else {
+                    status.className = 'status error';
+                    status.textContent = 'Erreur serveur: ' + xhr.status;
+                }
+                swapping = false;
+                document.getElementById('swapBtn').disabled = false;
+            };
 
-                xhr.onload = function() {
-                    clearInterval(interval);
-                    progressFill.style.width = '100%';
+            xhr.onerror = function() {
+                clearInterval(interval);
+                status.className = 'status error';
+                status.textContent = 'Erreur connexion — vérifie l\'URL et entre le mot de passe localtunnel dans ton navigateur d\'abord !';
+                swapping = false;
+                document.getElementById('swapBtn').disabled = false;
+            };
 
-                    if (xhr.status === 200) {
-                        const url = URL.createObjectURL(xhr.response);
-                        const video = document.getElementById('resultVideo');
-                        video.src = url;
-                        const dl = document.getElementById('downloadLink');
-                        dl.href = url;
-                        dl.download = 'faceswap_result.mp4';
-                        document.getElementById('resultSection').style.display = 'block';
-                        video.play();
-                        status.className = 'status success';
-                        status.textContent = '✅ Face Swap réussi !';
-                    } else {
-                        status.className = 'status error';
-                        status.textContent = 'Erreur serveur: ' + xhr.s
+            xhr.ontimeout = function() {
+                clearInterval(interval);
+                status.className = 'status error';
+                status.textContent = 'Timeout — vidéo trop longue !';
+                swapping = false;
+                document.getElementById('swapBtn').disabled = false;
+            };
+
+            xhr.send(formData);
+        }
+    </script>
+</body>
+</html>
