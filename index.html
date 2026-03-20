@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Swap Video - GPU</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0D0D14;
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: #1A1A2E;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 600px;
+            width: 100%;
+            border: 1px solid #2A2A45;
+        }
+        h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+        .subtitle { font-size: 14px; color: #A0A0C0; margin-bottom: 28px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-size: 13px; color: #A0A0C0; margin-bottom: 8px; font-weight: 500; }
+        input[type="text"] {
+            width: 100%; padding: 10px 14px;
+            background: #0D0D14; border: 1px solid #2A2A45;
+            border-radius: 8px; color: #ffffff; font-size: 14px; outline: none;
+        }
+        input[type="text"]:focus { border-color: #7C3AED; }
+        .file-input-wrapper {
+            background: #0D0D14; border: 1px dashed #2A2A45;
+            border-radius: 8px; padding: 20px; text-align: center; cursor: pointer;
+        }
+        .file-input-wrapper:hover { border-color: #7C3AED; }
+        .file-input-wrapper input[type="file"] { display: none; }
+        .file-icon { font-size: 28px; margin-bottom: 8px; }
+        .file-text { font-size: 13px; color: #A0A0C0; }
+        .file-name { font-size: 13px; color: #7C3AED; margin-top: 4px; font-weight: 500; }
+        .btn-swap {
+            width: 100%; padding: 14px; background: #7C3AED;
+            color: #ffffff; border: none; border-radius: 8px;
+            font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 8px;
+        }
+        .btn-swap:hover { background: #6D28D9; }
+        .btn-swap:disabled { background: #3D2070; cursor: not-allowed; opacity: 0.6; }
+        .status { margin-top: 16px; font-size: 14px; text-align: center; min-height: 20px; }
+        .status.success { color: #10B981; }
+        .status.error { color: #EF4444; }
+        .status.info { color: #A0A0C0; }
+        .progress-bar { display: none; margin-top: 12px; height: 4px; background: #2A2A45; border-radius: 2px; overflow: hidden; }
+        .progress-fill { height: 100%; width: 0%; background: #7C3AED; transition: width 0.3s; }
+        .result-section { display: none; margin-top: 24px; }
+        .result-section h3 { font-size: 16px; color: #10B981; margin-bottom: 12px; }
+        video { width: 100%; border-radius: 8px; background: #000; }
+        .btn-download {
+            display: block; width: 100%; padding: 12px; background: #10B981;
+            color: #ffffff; border: none; border-radius: 8px; font-size: 14px;
+            font-weight: 600; cursor: pointer; text-align: center;
+            margin-top: 12px; text-decoration: none;
+        }
+        .btn-download:hover { background: #059669; }
+        .divider { border: none; border-top: 1px solid #2A2A45; margin: 24px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Face Swap Video</h1>
+        <p class="subtitle">Powered by InsightFace GPU — Kaggle Backend</p>
+
+        <div class="form-group">
+            <label>URL de l'API (localtunnel Kaggle)</label>
+            <input type="text" id="apiUrl" placeholder="https://xxxxx.loca.lt" />
+        </div>
+
+        <hr class="divider">
+
+        <div class="form-group">
+            <label>1. Photo source (ton visage)</label>
+            <div class="file-input-wrapper" onclick="document.getElementById('sourceFile').click()">
+                <input type="file" id="sourceFile" accept="image/*" onchange="updateLabel('sourceFile', 'sourceName')">
+                <div class="file-icon">📷</div>
+                <div class="file-text">Clique pour choisir une photo</div>
+                <div class="file-name" id="sourceName"></div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>2. Vidéo cible</label>
+            <div class="file-input-wrapper" onclick="document.getElementById('videoFile').click()">
+                <input type="file" id="videoFile" accept="video/*" onchange="updateLabel('videoFile', 'videoName')">
+                <div class="file-icon">🎬</div>
+                <div class="file-text">Clique pour choisir une vidéo</div>
+                <div class="file-name" id="videoName"></div>
+            </div>
+        </div>
+
+        <button class="btn-swap" id="swapBtn" onclick="doSwap()">⚡ LANCER LE FACE SWAP</button>
+
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="status info" id="status"></div>
+
+        <div class="result-section" id="resultSection">
+            <h3>✅ Résultat</h3>
+            <video id="resultVideo" controls></video>
+            <a class="btn-download" id="downloadLink">💾 Télécharger la vidéo</a>
+        </div>
+    </div>
+
+    <script>
+        let swapping = false;
+
+        function updateLabel(inputId, labelId) {
+            const file = document.getElementById(inputId).files[0];
+            if (file) document.getElementById(labelId).textContent = file.name;
+        }
+
+        async function doSwap() {
+            if (swapping) return;
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            const sourceFile = document.getElementById('sourceFile').files[0];
+            const videoFile = document.getElementById('videoFile').files[0];
+            const status = document.getElementById('status');
+            const progressBar = document.getElementById('progressBar');
+            const progressFill = document.getElementById('progressFill');
+
+            if (!apiUrl) { status.className = 'status error'; status.textContent = 'Entre l\'URL de l\'API !'; return; }
+            if (!sourceFile || !videoFile) { status.className = 'status error'; status.textContent = 'Sélectionne une photo et une vidéo !'; return; }
+
+            swapping = true;
+            document.getElementById('swapBtn').disabled = true;
+            document.getElementById('resultSection').style.display = 'none';
+            progressBar.style.display = 'block';
+            progressFill.style.width = '0%';
+
+            let width = 0;
+            const interval = setInterval(() => {
+                if (width < 90) { width += Math.random() * 2; progressFill.style.width = Math.min(width, 90) + '%'; }
+            }, 500);
+
+            status.className = 'status info';
+            status.textContent = '⚡ Face Swap GPU en cours...';
+
+            const formData = new FormData();
+            formData.append('source', sourceFile);
+            formData.append('video', videoFile);
+
+            try {
+                const response = await fetch(apiUrl + '/swap-video', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'bypass-tunnel-reminder': 'true' }
+                });
+
+                clearInterval(interval);
+                progressFill.style.width = '100%';
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const video = document.getElementById('resultVideo');
+                    video.src = url;
+                    const dl = document.getElementById('downloadLink');
+                    dl.href = url;
+                    dl.download = 'faceswap_result.mp4';
+                    document.getElementById('resultSection').style.display = 'block';
+                    video.play();
+                    status.className = 'status success';
+                    status.textContent = '✅ Face Swap réussi !';
+                } else {
+                    const err = await response.json().catch(() => ({}));
+                    status.className = 'status error';
+                    status.textContent = 'Erreur: ' + (err.error || response.status);
+                }
+            } catch (e) {
+                clearInterval(interval);
+                status.className = 'status error';
+                status.textContent = 'Erreur connexion: ' + e.message;
+            }
+
+            swapping = false;
+            document.getElementById('swapBtn').disabled = false;
+            setTimeout(() => { progressFill.style.width = '0%'; progressBar.style.display = 'none'; }, 2000);
+        }
+    </script>
+</body>
+</html>
